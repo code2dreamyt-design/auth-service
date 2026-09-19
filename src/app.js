@@ -3,18 +3,28 @@ import cookieParser from "cookie-parser";
 import authRoute from "./routes/auth.routes.js";
 import passport from "./config/passport.js"
 import rateLimit from "express-rate-limit";
-const globalRateLimit = rateLimit({
-    windowMs:15 * 60 * 1000,
-    max:"100",
-    standardHeaders:true,
-    legacyHeaders:false
-})
+import mongoSanitize from "express-mongo-sanitize";
+import helmet from "helmet";
+import cors from "cors";
+import hpp from "hpp";
+import { clientUrl } from "./config/env.js";
+
 const app = express();
+const globalRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
-
-app.use(cookieParser())
+app.use(helmet());
+app.use(cors({ origin: clientUrl, credentials: true }));
 app.use(express.json());
+app.use(cookieParser());
+app.use(mongoSanitize());
+app.use(hpp());
 app.use(passport.initialize());
 app.use("/api/auth", globalRateLimit);
-app.use("/api/auth",authRoute)
+app.use("/api/auth", authRoute);
+
 export default app;

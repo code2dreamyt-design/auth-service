@@ -4,7 +4,7 @@ import {
   nodeEnv,
   passwordResetExpiryTime,
   refreshExpiry,
-  twoFactorSecret,
+  twoFactorSecretCode,
 } from "../config/env.js";
 import User from "../models/User.js";
 import ms from "ms";
@@ -24,7 +24,7 @@ import { generateSecret, generateURI, verify } from "otplib";
 import QRCode from "qrcode";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import { response } from "express";
+import { decrypt, encrypt } from "../utils/encryption.js";
 export const signup = async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
@@ -32,12 +32,10 @@ export const signup = async (req, res) => {
       message: "Invalid or empty input",
     });
   }
-  console.log("1");
   try {
     const isExists = await User.findOne({ email: email.toLowerCase().trim() });
     if (isExists)
       return res.status(409).json({ message: "Email already registered" });
-    console.log("1");
 
     const user = await User.create({
       name,
@@ -52,7 +50,7 @@ export const signup = async (req, res) => {
         Date.now() + ms(emailVerificationExpiry),
       );
       await user.save();
-      sendVerificationEmail(user, rawEmailVerificationToken);
+      sendVerificationEmail(user, rawEmailVerificationToken).catch(err=>console.error("Verification email failed",err.message));
     }
 
     const accessToken = generateAccessToken(user._id);
@@ -62,20 +60,18 @@ export const signup = async (req, res) => {
       req.ip,
       req.headers["user-agent"],
     );
-    //console.log("1")
     res.cookie("refreshToken", rawRefreshToken, {
       httpOnly: true,
       secure: nodeEnv === "production",
       sameSite: "strict",
       maxAge: ms(refreshExpiry),
     });
-    // console.log("1")
     return res.status(201).json({
       user,
       accessToken,
     });
   } catch (error) {
-    console.log("1");
+    
     if (error.code === 11000) {
       return res.status(409).json({ message: "Email already registered" });
     }
@@ -100,8 +96,8 @@ export const login = async (req, res) => {
     }
     if (user.lockUntil && user.lockUntil > Date.now()) {
       return res
-        .status(423)
-        .json({ message: "Account temporarily locked. Try again later." });
+        .status(401)
+        .json({ message: "nvalid credentials." });
     }
     const isPasswordCorrect = await user.comparePassword(password);
     if (!isPasswordCorrect) {
@@ -120,7 +116,7 @@ export const login = async (req, res) => {
     if (user.twoFactorEnabled) {
       const twoFactorToken = jwt.sign(
         { sub: user._id.toString(), purpose: "2fa" },
-        twoFactorSecret,
+        twoFactorSecretCode,
         { expiresIn: "5m" },
       );
       return res.status(200).json({ requires2FA: true, twoFactorToken });
@@ -469,8 +465,7 @@ export const setupTwoFactor = async (req, res) => {
       secret,
     });
     const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
-
-    user.twoFactorSecret = secret;
+    user.twoFactorSecret = encrypt(secret);
     await user.save();
 
     return res.status(200).json({
@@ -489,12 +484,13 @@ export const verifyTwoFactorSetup = async (req, res) => {
     const { token } = req.body;
     if (!token) return res.status(400).json({ message: "Invalid input" });
     const user = await User.findById(userId).select("+twoFactorSecret");
+    
     if (!user.twoFactorSecret)
       return res.status(400).json({ message: "Please start 2FA setup first" });
-    if (user.twoFactorEnabled)
-      return res.status(400).json({ message: "2FA is already enabled" });
-
-    const result = await verify({ secret: user.twoFactorSecret, token });
+    
+    if (user.twoFactorEnabled) {return res.status(400).json({ message: "2FA is already enabled" });}
+    const decryptSecret = decrypt(user.twoFactorSecret);
+    const result = await verify({ secret: decryptSecret, token });
     if (!result.valid) return res.status(400).json({ message: "Invalid code" });
     let codeArr = [];
     let codeHashArr = [];
@@ -527,7 +523,7 @@ export const verifyTwoFactorlogin = async (req, res) => {
   let decoded;
 
   try {
-    decoded = jwt.verify(twoFactorToken, twoFactorSecret);
+    decoded = jwt.verify(twoFactorToken, twoFactorSecretCode);
   } catch (error) {
     if (error.name === "TokenExpiredError") {
       return res
@@ -539,14 +535,14 @@ export const verifyTwoFactorlogin = async (req, res) => {
       .json({ message: "Invalid token", code: "INVALID_TOKEN" });
   }
   try {
-    if (decoded.purpose !== "2fa")
-      return res.status(400).json({ message: "Invalid Token" });
+    if (decoded.purpose !== "2fa"){ return res.status(400).json({ message: "Invalid Token" });}
 
     const user = await User.findById(decoded.sub).select(
       "+twoFactorSecret +backupCodesHashed",
     );
-    if (!user) return res.status(400).json({ message: "Invalid token" });
-    const result = await verify({ secret: user.twoFactorSecret, token: code });
+    if (!user) {return res.status(400).json({ message: "Invalid token" });}
+    const decryptSecret = decrypt(user.twoFactorSecret);
+    const result = await verify({ secret: decryptSecret, token: code });
     if (!result.valid) {
       const hashedCode = hashToken(code);
       const isMatched = user.backupCodesHashed.some(

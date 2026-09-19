@@ -21,6 +21,7 @@ const envSchema = z.object({
     GOOGLE_CLIENT_ID: z.string().min(1),
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     GOOGLE_CALLBACK_URL: z.string().url(),
+    TWO_FACTOR_ENCRYPTION_KEY:z.string().length(64)
 });
 const parsed = envSchema.safeParse(process.env);
 if(!parsed.success){
@@ -43,7 +44,8 @@ export const emailFrom = parsed.data.EMAIL_FROM;
 export const emailVerificationExpiry = parsed.data.EMAIL_VERIFICATION_EXPIRY;
 export const passwordResetExpiryTime = parsed.data.PASSWORD_RESET_EXPIRY;
 export const appName = parsed.data.APP_NAME;
-export const twoFactorSecret = parsed.data.JWT_TWO_FACTOR_SECRET;
+export const twoFactorSecretCode = parsed.data.JWT_TWO_FACTOR_SECRET;
 export const googleClientId = parsed.data.GOOGLE_CLIENT_ID;
 export const googleClientSecret = parsed.data.GOOGLE_CLIENT_SECRET;
 export const googleCallbackUrl = parsed.data.GOOGLE_CALLBACK_URL;
+export const twoFactorEncryptionKey =parsed.data.TWO_FACTOR_ENCRYPTION_KEY;
