@@ -97,7 +97,7 @@ export const login = async (req, res) => {
     if (user.lockUntil && user.lockUntil > Date.now()) {
       return res
         .status(401)
-        .json({ message: "Invalid credentials." });
+        .json({ message: "Invalid credentials" });
     }
     const isPasswordCorrect = await user.comparePassword(password);
     if (!isPasswordCorrect) {

@@ -6,7 +6,7 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import cors from "cors";
 import hpp from "hpp";
-import { clientUrl } from "./config/env.js";
+import { clientUrl, nodeEnv } from "./config/env.js";
 
 const app = express();
 if (nodeEnv === "production") {
