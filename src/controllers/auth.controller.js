@@ -91,13 +91,13 @@ export const login = async (req, res) => {
     const user = await User.findOne({
       email: email.toLowerCase().trim(),
     }).select("+password");
-    if (!user) {
+    if (!user || !user.password) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
     if (user.lockUntil && user.lockUntil > Date.now()) {
       return res
         .status(401)
-        .json({ message: "nvalid credentials." });
+        .json({ message: "Invalid credentials." });
     }
     const isPasswordCorrect = await user.comparePassword(password);
     if (!isPasswordCorrect) {
